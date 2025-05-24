@@ -64,4 +64,9 @@ plan:
             emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
             path: contracts/innovation-registration.clar
             clarity-version: 2
+        - emulated-contract-publish:
+            contract-name: innovator-verification
+            emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+            path: contracts/innovator-verification.clar
+            clarity-version: 2
       epoch: "2.5"
