@@ -1,109 +1,97 @@
-;; Innovation Registration Contract
-;; Records and manages new technologies
+;; Innovator Verification Contract
+;; Validates and manages technology creators
 
 ;; Constants
 (define-constant contract-owner tx-sender)
-(define-constant err-owner-only (err u200))
-(define-constant err-not-found (err u201))
-(define-constant err-unauthorized (err u202))
-(define-constant err-invalid-status (err u203))
+(define-constant err-owner-only (err u100))
+(define-constant err-already-verified (err u101))
+(define-constant err-not-found (err u102))
+(define-constant err-unauthorized (err u103))
 
 ;; Data Variables
-(define-data-var next-innovation-id uint u1)
+(define-data-var next-innovator-id uint u1)
 
 ;; Data Maps
-(define-map innovations
-  { innovation-id: uint }
+(define-map innovators
+  { innovator-id: uint }
   {
-    innovator-id: uint,
-    title: (string-ascii 100),
-    description: (string-ascii 500),
-    category: (string-ascii 50),
-    technology-readiness-level: uint,
-    patent-status: (string-ascii 50),
-    registration-date: uint,
-    status: (string-ascii 20)
+    wallet: principal,
+    name: (string-ascii 100),
+    expertise: (string-ascii 200),
+    verified: bool,
+    verification-date: uint,
+    reputation-score: uint
   }
 )
 
-(define-map innovation-metadata
-  { innovation-id: uint }
-  {
-    keywords: (string-ascii 200),
-    potential-applications: (string-ascii 300),
-    development-stage: (string-ascii 100)
-  }
+(define-map innovator-by-wallet
+  { wallet: principal }
+  { innovator-id: uint }
 )
 
 ;; Public Functions
 
-;; Register a new innovation
-(define-public (register-innovation
-  (innovator-id uint)
-  (title (string-ascii 100))
-  (description (string-ascii 500))
-  (category (string-ascii 50))
-  (trl uint)
-  (patent-status (string-ascii 50))
-)
+;; Register as an innovator
+(define-public (register-innovator (name (string-ascii 100)) (expertise (string-ascii 200)))
   (let
     (
-      (innovation-id (var-get next-innovation-id))
+      (innovator-id (var-get next-innovator-id))
+      (caller tx-sender)
     )
-    ;; Basic validation
-    (asserts! (<= trl u9) err-invalid-status)
+    (asserts! (is-none (map-get? innovator-by-wallet { wallet: caller })) err-already-verified)
 
-    (map-set innovations
-      { innovation-id: innovation-id }
+    (map-set innovators
+      { innovator-id: innovator-id }
       {
-        innovator-id: innovator-id,
-        title: title,
-        description: description,
-        category: category,
-        technology-readiness-level: trl,
-        patent-status: patent-status,
-        registration-date: block-height,
-        status: "active"
+        wallet: caller,
+        name: name,
+        expertise: expertise,
+        verified: false,
+        verification-date: u0,
+        reputation-score: u0
       }
     )
 
-    (var-set next-innovation-id (+ innovation-id u1))
-    (ok innovation-id)
+    (map-set innovator-by-wallet
+      { wallet: caller }
+      { innovator-id: innovator-id }
+    )
+
+    (var-set next-innovator-id (+ innovator-id u1))
+    (ok innovator-id)
   )
 )
 
-;; Add metadata to innovation
-(define-public (add-innovation-metadata
-  (innovation-id uint)
-  (keywords (string-ascii 200))
-  (applications (string-ascii 300))
-  (stage (string-ascii 100))
-)
+;; Verify an innovator (owner only)
+(define-public (verify-innovator (innovator-id uint))
   (let
     (
-      (innovation-data (unwrap! (map-get? innovations { innovation-id: innovation-id }) err-not-found))
+      (innovator-data (unwrap! (map-get? innovators { innovator-id: innovator-id }) err-not-found))
     )
-    (map-set innovation-metadata
-      { innovation-id: innovation-id }
-      {
-        keywords: keywords,
-        potential-applications: applications,
-        development-stage: stage
-      }
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+
+    (map-set innovators
+      { innovator-id: innovator-id }
+      (merge innovator-data {
+        verified: true,
+        verification-date: block-height
+      })
     )
     (ok true)
   )
 )
 
-;; Update innovation status
-(define-public (update-innovation-status (innovation-id uint) (new-status (string-ascii 20)))
+;; Update reputation score
+(define-public (update-reputation (innovator-id uint) (new-score uint))
   (let
     (
-      (innovation-data (unwrap! (map-get? innovations { innovation-id: innovation-id }) err-not-found))
+      (innovator-data (unwrap! (map-get? innovators { innovator-id: innovator-id }) err-not-found))
     )
-    (map-set innovations
-      { innovation-id: innovation-id }
-      (merge innovation-data { status: new-status })
+    (asserts! (is-eq tx-sender contract-owner) err-owner-only)
+
+    (map-set innovators
+      { innovator-id: innovator-id }
+      (merge innovator-data { reputation-score: new-score })
     )
     (ok true)
   )
@@ -111,14 +99,20 @@
 
 ;; Read-only Functions
 
-(define-read-only (get-innovation (innovation-id uint))
-  (map-get? innovations { innovation-id: innovation-id })
+(define-read-only (get-innovator (innovator-id uint))
+  (map-get? innovators { innovator-id: innovator-id })
 )
 
-(define-read-only (get-innovation-metadata (innovation-id uint))
-  (map-get? innovation-metadata { innovation-id: innovation-id })
+(define-read-only (get-innovator-by-wallet (wallet principal))
+  (match (map-get? innovator-by-wallet { wallet: wallet })
+    innovator-ref (map-get? innovators { innovator-id: (get innovator-id innovator-ref) })
+    none
+  )
 )
 
-(define-read-only (get-innovation-count)
-  (- (var-get next-innovation-id) u1)
+(define-read-only (is-verified (innovator-id uint))
+  (match (map-get? innovators { innovator-id: innovator-id })
+    innovator-data (get verified innovator-data)
+    false
+  )
 )
